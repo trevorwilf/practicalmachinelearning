@@ -1,0 +1,256 @@
+---
+title: "Practical Machine Learning"
+author: "Trevor"
+date: "5/07/2016"
+output: html_document
+---
+
+# Background
+In the paper "Qualitative Activity Recognition of Weight Lifting Exercises" researchers used accelerometers to measure multiple test subjects doing unilateral dumbell curls.  The purpose of the experiment was to determine if common mistakes in the curl excersive could be accurately observed.  The accelerometers were placed on the belt, glove (forearm), armband (upper arm), and dumbell.
+
+Test subjects were instructed to perform the excersize in 5 distinct ways:<br>
+Class A: properly performed<br>
+Class B: throwing elbows in front<br>
+Class C: lifting dumbell half way<br>
+Class D: lowering the dumbell halfway<br>
+Class E: throwing hips out front
+
+In the practical machine learning class, we will be rerurning the data to confirm the belief that the study accurately predicts the excersize mistake or lack there of it.
+
+In the study, the researchers used Random Forest.  We are going to use Random Forest, Generalized Boosted Regression Modeling, and Extreme Gradient Boosting to see which gives us the greatest accuracy.
+```{r setwd, echo=FALSE}
+setwd("~/ShinyApps/machinelearning")
+```
+```{r loadlibrary, results="hide", message=FALSE}
+library(caret); library(randomForest); library(gbm); library(xgboost); library(plyr)
+
+set.seed(3234)
+```
+
+In order to save time we are going to use multiple cores.  The server I am running this on has 24 cores.  I am going to use 20 cores for the machine learning, leaving 4 cores for other users.  Yup, I am just that nice.
+```{r setmcoredata, results="hide", message=FALSE}
+library(doMC)
+numcores <- floor(detectCores()) - 4
+registerDoMC(cores = numcores)
+```
+
+# Cleaning the data
+We need to import and clean the data.  We are going to remove all collumns that contain null data.  Then we are going to remove all observations with a lot of variance.  As it turns out, none of the data is removed due to variance.
+```{r getdata, results="hide", message=FALSE}
+pmldata_train <- read.csv(file="pml-training.csv",head=TRUE,sep=",")
+pmldata_test <- read.csv(file="pml-testing.csv",head=TRUE,sep=",")
+
+pmldata_train.omit <- pmldata_train[ , apply(pmldata_train, 2, 
+                                             function(x) !any(is.na(x) | x == ""))]
+pmldata_test.omit <- pmldata_test[ , apply(pmldata_test, 2, 
+                                           function(x) !any(is.na(x) | x == ""))]
+
+goodstuff <- pmldata_train.omit[,grep("arm|belt|dumb|class", 
+                                      names(pmldata_train.omit))]
+goodstuff.zero <- nearZeroVar(goodstuff, saveMetrics = TRUE)
+goodstuff <- goodstuff[, goodstuff.zero[, "nzv"] == FALSE]
+```
+
+# Processing the data
+In addition to trying to predict which movement was performed, we are also going to run three machine learning models in four different ways.  The models we are going to use are Random Forest, Generalized Boosted Regression Modeling, and Extreme Gradient Boosting.  We are going to run these using the cross validation method.  We will also run these 10 times, 60 times, 20 times repeated 3 times, and 200 times.  We will then evaluate each one to see which gave us the best accuracy. <br><br>
+Resample = 10 -- Repeated = 1
+```{r resample_10, cache=TRUE, results="hide", message=FALSE}
+resamplenum <- 10
+repeatsnum <- 1
+#length is = (resamplenum)+1
+seeds <- vector(mode = "list", length = ((resamplenum) + 1)) 
+#3 is the number of tuning parameter for rf and gbm
+for(i in 1:resamplenum) seeds[[i]]<- sample.int(n=1000, 3) 
+#for the last model
+seeds[[resamplenum+1]]<-sample.int(1000, 1)
+
+registerDoMC(cores = numcores)
+myControl <- trainControl(method = "cv", number = resamplenum, 
+                          repeats = repeatsnum, seeds=seeds)
+test_gbm_10 <- train(classe ~ ., method = "gbm", data = goodstuff, 
+                     verbose = TRUE, trControl = myControl)
+test_rf_10 <- train(classe ~ ., method = "rf", data = goodstuff, 
+                    verbose = TRUE, trControl = myControl)
+
+# xgbTree has its own parallel functionality so we 
+# need to turn the registered cores back to one
+registerDoMC(cores = 1) 
+seeds <- vector(mode = "list", length = (resamplenum + 1)) 
+#12 is the number of tuning parameter for xgm
+for(i in 1:resamplenum) seeds[[i]]<- sample.int(n=1000, 12) 
+seeds[[resamplenum+1]]<-sample.int(1000, 1)
+
+myControl <- trainControl(method = "cv", number = resamplenum, 
+                          repeats = repeatsnum, seeds=seeds)
+test_xgb_10 <- train(classe ~ ., method = "xgbTree", data = goodstuff, 
+                     verbose = TRUE, trControl = myControl)
+```
+
+Resample = 60 -- Repeated = 1
+```{r resample_60, cache=TRUE, results="hide", eval=TRUE}
+resamplenum <- 60
+repeatsnum <- 1
+seeds <- vector(mode = "list", length = ((resamplenum) + 1)) 
+for(i in 1:resamplenum) seeds[[i]]<- sample.int(n=1000, 3) 
+seeds[[resamplenum+1]]<-sample.int(1000, 1)
+
+registerDoMC(cores = numcores)
+myControl <- trainControl(method = "cv", number = resamplenum, 
+                          repeats = repeatsnum, seeds=seeds)
+test_gbm_60 <- train(classe ~ ., method = "gbm", data = goodstuff, 
+                     verbose = TRUE, trControl = myControl)
+test_rf_60 <- train(classe ~ ., method = "rf", data = goodstuff, 
+                    verbose = TRUE, trControl = myControl)
+
+registerDoMC(cores = 1) 
+seeds <- vector(mode = "list", length = (resamplenum + 1)) 
+for(i in 1:resamplenum) seeds[[i]]<- sample.int(n=1000, 12) 
+seeds[[resamplenum+1]]<-sample.int(1000, 1)
+
+myControl <- trainControl(method = "cv", number = resamplenum, 
+                          repeats = repeatsnum, seeds=seeds)
+test_xgb_60 <- train(classe ~ ., method = "xgbTree", data = goodstuff, 
+                     verbose = TRUE, trControl = myControl)
+```
+
+Resample = 20 -- Repeated = 3
+```{r resample_20x3, cache=TRUE, results="hide", eval=TRUE}
+resamplenum <- 20
+repeatsnum <- 3
+seeds <- vector(mode = "list", length = ((resamplenum) + 1)) 
+for(i in 1:resamplenum) seeds[[i]]<- sample.int(n=1000, 3) 
+seeds[[resamplenum+1]]<-sample.int(1000, 1)
+
+registerDoMC(cores = numcores)
+myControl <- trainControl(method = "cv", number = resamplenum, 
+                          repeats = repeatsnum, seeds=seeds)
+test_gbm_20x3 <- train(classe ~ ., method = "gbm", data = goodstuff, 
+                     verbose = TRUE, trControl = myControl)
+test_rf_20x3 <- train(classe ~ ., method = "rf", data = goodstuff, 
+                    verbose = TRUE, trControl = myControl)
+
+registerDoMC(cores = 1) 
+seeds <- vector(mode = "list", length = (resamplenum + 1)) 
+for(i in 1:resamplenum) seeds[[i]]<- sample.int(n=1000, 12) 
+seeds[[resamplenum+1]]<-sample.int(1000, 1)
+
+myControl <- trainControl(method = "cv", number = resamplenum, 
+                          repeats = repeatsnum, seeds=seeds)
+test_xgb_20x3 <- train(classe ~ ., method = "xgbTree", data = goodstuff, 
+                     verbose = TRUE, trControl = myControl)
+```
+
+Resample = 200 -- Repeated = 1
+```{r resample_200, cache=TRUE, results="hide", eval=TRUE}
+resamplenum <- 200
+repeatsnum <- 1
+seeds <- vector(mode = "list", length = ((resamplenum) + 1)) 
+for(i in 1:resamplenum) seeds[[i]]<- sample.int(n=1000, 3) 
+seeds[[resamplenum+1]]<-sample.int(1000, 1)
+
+registerDoMC(cores = numcores)
+myControl <- trainControl(method = "cv", number = resamplenum, 
+                          repeats = repeatsnum, seeds=seeds)
+test_gbm_200 <- train(classe ~ ., method = "gbm", data = goodstuff, 
+                     verbose = TRUE, trControl = myControl)
+test_rf_200 <- train(classe ~ ., method = "rf", data = goodstuff, 
+                    verbose = TRUE, trControl = myControl)
+
+registerDoMC(cores = 1) 
+seeds <- vector(mode = "list", length = (resamplenum + 1)) 
+for(i in 1:resamplenum) seeds[[i]]<- sample.int(n=1000, 12) 
+seeds[[resamplenum+1]]<-sample.int(1000, 1)
+
+myControl <- trainControl(method = "cv", number = resamplenum, 
+                          repeats = repeatsnum, seeds=seeds)
+test_xgb_200 <- train(classe ~ ., method = "xgbTree", data = goodstuff, 
+                     verbose = TRUE, trControl = myControl)
+```
+
+We now need to calculate the accuracy of the models we just created.
+```{r setcores1, cache=TRUE, echo=FALSE}
+registerDoMC(cores = numcores)
+```
+```{r accuracy_calc, cache=TRUE, results=FALSE}
+registerDoMC(cores = numcores)
+
+#Generalized Boosted Regression Modeling
+test <- confusionMatrix(test_gbm_10)
+accuracy <- sum(diag(test$table))/100
+test <- confusionMatrix(test_gbm_20x3)
+accuracy <- rbind(accuracy, (sum(diag(test$table))/100))
+test <- confusionMatrix(test_gbm_60)
+accuracy <- rbind(accuracy, (sum(diag(test$table))/100))
+test <- confusionMatrix(test_gbm_200)
+accuracy <- rbind(accuracy, (sum(diag(test$table))/100))
+
+#Random Forest
+test <- confusionMatrix(test_rf_10)
+accuracy <- rbind(accuracy, (sum(diag(test$table))/100))
+test <- confusionMatrix(test_rf_20x3)
+accuracy <- rbind(accuracy, (sum(diag(test$table))/100))
+test <- confusionMatrix(test_rf_60)
+accuracy <- rbind(accuracy, (sum(diag(test$table))/100))
+test <- confusionMatrix(test_rf_200)
+accuracy <- rbind(accuracy, (sum(diag(test$table))/100))
+
+#Extreme Gradient Boosting
+test <- confusionMatrix(test_xgb_10)
+accuracy <- rbind(accuracy, (sum(diag(test$table))/100))
+test <- confusionMatrix(test_xgb_20x3)
+accuracy <- rbind(accuracy, (sum(diag(test$table))/100))
+test <- confusionMatrix(test_xgb_60)
+accuracy <- rbind(accuracy, (sum(diag(test$table))/100))
+test <- confusionMatrix(test_xgb_200)
+accuracy <- rbind(accuracy, (sum(diag(test$table))/100))
+
+colnames(accuracy)[1] <- "accuracy"
+```
+
+For the purposes of the class assignment, we need to run test set through each model
+```{r prediction_calc, cache=TRUE, results="hide"}
+#Generalized Boosted Regression Modeling
+prediction_gbm_10 <- as.character(predict(test_gbm_10, pmldata_test.omit))
+prediction_gbm_20x3 <- as.character(predict(test_gbm_20x3, pmldata_test.omit))
+prediction_gbm_60 <- as.character(predict(test_gbm_60, pmldata_test.omit))
+prediction_gbm_200 <- as.character(predict(test_gbm_200, pmldata_test.omit))
+
+#Random Forest
+prediction_rf_10 <- as.character(predict(test_rf_10, pmldata_test.omit))
+prediction_rf_20x3 <- as.character(predict(test_rf_20x3, pmldata_test.omit))
+prediction_rf_60 <- as.character(predict(test_rf_60, pmldata_test.omit))
+prediction_rf_200 <- as.character(predict(test_rf_200, pmldata_test.omit))
+
+#Extreme Gradient Boosting
+prediction_xgb_10 <- as.character(predict(test_xgb_10, pmldata_test.omit))
+prediction_xgb_20x3 <- as.character(predict(test_xgb_20x3, pmldata_test.omit))
+prediction_xgb_60 <- as.character(predict(test_xgb_60, pmldata_test.omit))
+prediction_xgb_200 <- as.character(predict(test_xgb_200, pmldata_test.omit))
+
+result_test <- rbind(prediction_gbm_10, prediction_gbm_20x3, prediction_gbm_60, prediction_gbm_200,
+            prediction_rf_10, prediction_rf_20x3, prediction_rf_60, prediction_rf_200,
+            prediction_xgb_10, prediction_xgb_20x3, prediction_xgb_60, prediction_xgb_200)
+
+colnames(result_test) <- 1:20
+      
+finalresult <- cbind(accuracy, result_test)
+rownames(finalresult) <- rownames(result_test)
+```
+
+# Results
+
+Here is the accuracy results from the models.  Using xgb boost and 200 resamples gave us the greatest level of accuracy.  A couple interesting things to note.  All 12 of the models gave us the exact same predictions for out comes.  So for the purposes of the class, the worst model was accurate enough for all reasonable purposes.  Another interesting thing to note, greater resamples did not necessarily produce greater accuracy.
+```{r finalresult1}
+subset(finalresult, select = "accuracy")
+```
+
+The results for the course have been purposefully left out as stated in the assignment.
+We now combine all of the calculated data and write the predictions to a file on the server
+```{r write_data, cache=TRUE, results=FALSE, eval=FALSE}
+write.csv(finalresult, file = "MyData.csv")
+```
+
+
+```{r setcores2, echo=FALSE}
+registerDoMC(cores = 1)
+```
