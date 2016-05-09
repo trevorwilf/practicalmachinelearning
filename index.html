@@ -249,7 +249,7 @@ myControl &lt;- trainControl(method = &quot;cv&quot;, number = resamplenum,
                           repeats = repeatsnum, seeds=seeds)
 test_xgb_200 &lt;- train(classe ~ ., method = &quot;xgbTree&quot;, data = goodstuff, 
                      verbose = TRUE, trControl = myControl)</code></pre>
-<p>We now need to calculate the accuracy of the models we just created.</p>
+<p>We now need to calculate the accuracy and out sample error of the models we just created.</p>
 <pre class="r"><code>registerDoMC(cores = numcores)
 
 #Generalized Boosted Regression Modeling
@@ -282,7 +282,8 @@ accuracy &lt;- rbind(accuracy, (sum(diag(test$table))/100))
 test &lt;- confusionMatrix(test_xgb_200)
 accuracy &lt;- rbind(accuracy, (sum(diag(test$table))/100))
 
-colnames(accuracy)[1] &lt;- &quot;accuracy&quot;</code></pre>
+colnames(accuracy)[1] &lt;- &quot;accuracy&quot;
+accuracy &lt;- cbind(accuracy, apply(accuracy, 1, function(x) {1 - x}))</code></pre>
 <p>For the purposes of the class assignment, we need to run test set through each model</p>
 <pre class="r"><code>#Generalized Boosted Regression Modeling
 prediction_gbm_10 &lt;- as.character(predict(test_gbm_10, pmldata_test.omit))
@@ -309,25 +310,27 @@ result_test &lt;- rbind(prediction_gbm_10, prediction_gbm_20x3, prediction_gbm_6
 colnames(result_test) &lt;- 1:20
       
 finalresult &lt;- cbind(accuracy, result_test)
-rownames(finalresult) &lt;- rownames(result_test)</code></pre>
+rownames(finalresult) &lt;- rownames(result_test)
+colnames(finalresult)[2] &lt;- &quot;outofsampleerror&quot;</code></pre>
 </div>
 <div id="results" class="section level1">
 <h1>Results</h1>
 <p>Here is the accuracy results from the models. Using xgb boost and 200 resamples gave us the greatest level of accuracy. A couple interesting things to note. All 12 of the models gave us the exact same predictions for out comes. So for the purposes of the class, the worst model was accurate enough for all reasonable purposes. Another interesting thing to note, greater resamples did not necessarily produce greater accuracy.</p>
-<pre class="r"><code>subset(finalresult, select = &quot;accuracy&quot;)</code></pre>
-<pre><code>##                     accuracy           
-## prediction_gbm_10   &quot;0.963459382325961&quot;
-## prediction_gbm_20x3 &quot;0.963306492712262&quot;
-## prediction_gbm_60   &quot;0.964274793599021&quot;
-## prediction_gbm_200  &quot;0.963663235144226&quot;
-## prediction_rf_10    &quot;0.995566201202732&quot;
-## prediction_rf_20x3  &quot;0.995668127611864&quot;
-## prediction_rf_60    &quot;0.995922943634696&quot;
-## prediction_rf_200   &quot;0.996024870043828&quot;
-## prediction_xgb_10   &quot;0.996126796452961&quot;
-## prediction_xgb_20x3 &quot;0.996330649271226&quot;
-## prediction_xgb_60   &quot;0.995973906839262&quot;
-## prediction_xgb_200  &quot;0.996636428498624&quot;</code></pre>
+<pre class="r"><code>#finalresult
+subset(finalresult, select = c(&quot;accuracy&quot;, &quot;outofsampleerror&quot;))</code></pre>
+<pre><code>##                     accuracy            outofsampleerror     
+## prediction_gbm_10   &quot;0.963459382325961&quot; &quot;0.0365406176740393&quot; 
+## prediction_gbm_20x3 &quot;0.963306492712262&quot; &quot;0.0366935072877383&quot; 
+## prediction_gbm_60   &quot;0.964274793599021&quot; &quot;0.0357252064009785&quot; 
+## prediction_gbm_200  &quot;0.963663235144226&quot; &quot;0.0363367648557741&quot; 
+## prediction_rf_10    &quot;0.995566201202732&quot; &quot;0.00443379879726846&quot;
+## prediction_rf_20x3  &quot;0.995668127611864&quot; &quot;0.0043318723881357&quot; 
+## prediction_rf_60    &quot;0.995922943634696&quot; &quot;0.00407705636530442&quot;
+## prediction_rf_200   &quot;0.996024870043828&quot; &quot;0.00397512995617166&quot;
+## prediction_xgb_10   &quot;0.996126796452961&quot; &quot;0.00387320354703902&quot;
+## prediction_xgb_20x3 &quot;0.996330649271226&quot; &quot;0.00366935072877383&quot;
+## prediction_xgb_60   &quot;0.995973906839262&quot; &quot;0.00402609316073788&quot;
+## prediction_xgb_200  &quot;0.996636428498624&quot; &quot;0.00336357150137601&quot;</code></pre>
 <p>The results for the course have been purposefully left out as stated in the assignment. We now combine all of the calculated data and write the predictions to a file on the server</p>
 <pre class="r"><code>write.csv(finalresult, file = &quot;MyData.csv&quot;)</code></pre>
 </div>
