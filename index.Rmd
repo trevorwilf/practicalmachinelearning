@@ -167,7 +167,7 @@ test_xgb_200 <- train(classe ~ ., method = "xgbTree", data = goodstuff,
                      verbose = TRUE, trControl = myControl)
 ```
 
-We now need to calculate the accuracy of the models we just created.
+We now need to calculate the accuracy and out sample error of the models we just created.
 ```{r setcores1, cache=TRUE, echo=FALSE}
 registerDoMC(cores = numcores)
 ```
@@ -205,6 +205,8 @@ test <- confusionMatrix(test_xgb_200)
 accuracy <- rbind(accuracy, (sum(diag(test$table))/100))
 
 colnames(accuracy)[1] <- "accuracy"
+accuracy <- cbind(accuracy, apply(accuracy, 1, function(x) {1 - x}))
+
 ```
 
 For the purposes of the class assignment, we need to run test set through each model
@@ -235,13 +237,15 @@ colnames(result_test) <- 1:20
       
 finalresult <- cbind(accuracy, result_test)
 rownames(finalresult) <- rownames(result_test)
+colnames(finalresult)[2] <- "outofsampleerror"
 ```
 
 # Results
 
 Here is the accuracy results from the models.  Using xgb boost and 200 resamples gave us the greatest level of accuracy.  A couple interesting things to note.  All 12 of the models gave us the exact same predictions for out comes.  So for the purposes of the class, the worst model was accurate enough for all reasonable purposes.  Another interesting thing to note, greater resamples did not necessarily produce greater accuracy.
 ```{r finalresult1}
-subset(finalresult, select = "accuracy")
+#finalresult
+subset(finalresult, select = c("accuracy", "outofsampleerror"))
 ```
 
 The results for the course have been purposefully left out as stated in the assignment.
