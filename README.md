@@ -1,2 +1,3 @@
 # practicalmachinelearning
-Coursera Practical Machine Learning
+
+Machine Learning examples using multiple cores.
